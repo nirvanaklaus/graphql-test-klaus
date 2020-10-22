@@ -183,7 +183,7 @@ const resolvers = {
 
       return Note.findByIdAndRemove(id)
         .then(note => {
-          if(!note){
+          if (!note) {
             return new Error('Note does not exist')
           }
           returnThis = { ...note._doc, id: note._id.toString(), createdAt: note.createdAt.toString(), updatedAt: note.updatedAt.toString() }
@@ -212,7 +212,11 @@ Mongoose.connect('mongodb+srv://nick:nikky@cluster0.fe1vp.mongodb.net/graphql', 
   if (err) {
     return console.log(err);
   }
-  app.listen('4000', () => {
+  let port = process.env.PORT;
+  if (port == null || port == "") {
+    port = '4000';
+  }
+  app.listen(port, () => {
     console.log('Server live!')
     console.log('Now browse to http://localhost:4000' + server.graphqlPath)
   })
