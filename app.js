@@ -41,6 +41,7 @@ const typeDefs = gql`
     hello: String
     colour: String
     findNote(id: ID!): Note!
+    getNotes: [Note!]
   }
   type Mutation{
     signUp(input: SignUpInput): User!
@@ -55,7 +56,82 @@ const resolvers = {
   Query: {
     hello: () => 'Hello world!',
     colour: () => 'Red',
+    findNote(parent, args) {
+      const id = args.id;
+      let returnThis;
+      return Note.findById(id)
+        .then(note => {
+          note.title = details.title;
+          note.content = details.content;
+          note.author = note.author;
+          return note.save()
+            .then(note => {
+              returnThis = { ...note._doc, id: note._id.toString(), createdAt: note.createdAt.toString(), updatedAt: note.updatedAt.toString() }
+              return User.findById(note.author)
+                .then(user => {
+                  returnThis = { ...returnThis, author: { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString() } }
+                  console.log(returnThis, user)
+                  return returnThis;
+                })
+            })
+            .catch(err => err)
+        })
+        .catch(err => err)
+
+    },
+    getNotes(parents, args) {
+      let returnThis;
+      return Note.find()
+        .then(notes => {
+          returnThis = notes.map(each => {
+            if (!each.title) {
+              each.title = ""
+            }
+            return each;
+          })
+          return returnThis;
+        })
+        .then(updatedNotes => {
+          returnThis = updatedNotes;
+          // console.log(returnThis);
+          return returnThis;
+        })
+    }
   },
+
+  Note: {
+    author: (parent) => {
+      let returnThis;
+      // console.log(parent, 'parent')
+      return User.findById(parent.author)
+        .then(user => {
+          returnThis = { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString() }
+          // console.log(returnThis, user)
+          return returnThis;
+        })
+        .catch(err => err)
+    }
+  },
+  User: {
+    notes: (parent) => {
+      let returnThis;
+      // console.log(parent, 'parent')
+      let notesArray = parent.notes.map(each => {
+        // console.log(parent.notes)
+        return Note.findById(each)
+          .then(note => {
+            return { ...note._doc, id: note._id.toString(), createdAt: note.createdAt.toString(), updatedAt: note.updatedAt.toString() }
+          })
+      })
+      return Promise.all(notesArray)
+        .then(result => {
+          returnThis = result
+          return returnThis;
+        })
+    }
+
+  },
+
   Mutation: {
     signUp(parent, args, context, info) {
       const details = args.input;
@@ -75,18 +151,9 @@ const resolvers = {
                   })
                   return user.save()
                     .then(user => {
-                      let notes = user.notes.map(each => {
-                        return Note.findById(each)
-                          .then(note => {
-                            return note;
-                          })
-                      })
-                      return Promise.all(notes)
-                        .then(result => {
-                          const returnThis = { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString(), notes: result }
-                          console.log(returnThis, 'created')
-                          return returnThis;
-                        })
+                      const returnThis = { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString() }
+                      console.log(returnThis, 'created')
+                      return returnThis;
                     })
                 })
                 .catch(err => {
@@ -110,18 +177,10 @@ const resolvers = {
               .then(isCorrect => {
                 if (!isCorrect) {
                   return new Error('email/password is wrong.')
-                } let notes = user.notes.map(each => {
-                  return Note.findById(each)
-                    .then(note => {
-                      return note;
-                    })
-                })
-                return Promise.all(notes)
-                  .then(result => {
-                    const returnThis = { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString(), notes: result }
-                    console.log(returnThis);
-                    return returnThis;
-                  })
+                }
+                const returnThis = { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString() }
+                console.log(returnThis);
+                return returnThis;
               })
           } else {
             return new Error('email/password is wrong.')
@@ -145,7 +204,6 @@ const resolvers = {
               user.notes.push(returnThis._id)
               return user.save()
                 .then(result => {
-                  returnThis = { ...returnThis, author: { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString() } }
                   console.log(returnThis, result)
                   return returnThis;
                 })
@@ -166,15 +224,11 @@ const resolvers = {
           return note.save()
             .then(note => {
               returnThis = { ...note._doc, id: note._id.toString(), createdAt: note.createdAt.toString(), updatedAt: note.updatedAt.toString() }
-              return User.findById(note.author)
-                .then(user => {
-                  returnThis = { ...returnThis, author: { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString() } }
-                  console.log(returnThis, user)
+                  console.log(returnThis)
                   return returnThis;
                 })
             })
             .catch(err => err)
-        })
         .catch(err => err)
     },
     deleteNote(parent, args, context, info) {
@@ -192,7 +246,6 @@ const resolvers = {
               user.notes.pull(id)
               return user.save()
                 .then(result => {
-                  returnThis = { ...returnThis, author: { ...result._doc, id: result._id.toString(), createdAt: result.createdAt.toString(), updatedAt: result.updatedAt.toString() } }
                   console.log(returnThis, result)
                   return returnThis;
                 })
