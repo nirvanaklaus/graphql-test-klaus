@@ -4,6 +4,8 @@ const Mongoose = require('mongoose');
 const User = require('./models/users');
 const Note = require('./models/notes');
 const { hash, compare } = require('bcryptjs');
+const jwt = require('jsonwebtoken')
+const verifyAuth = require('./middleware/isauth');
 const typeDefs = gql`
 
 
@@ -41,7 +43,7 @@ const typeDefs = gql`
     hello: String
     colour: String
     findNote(id: ID!): Note!
-    getNotes: [Note!]
+    getNotes(cursor: Int!): [Note!]
   }
   type Mutation{
     signUp(input: SignUpInput): User!
@@ -51,6 +53,14 @@ const typeDefs = gql`
     deleteNote(id: ID!): Note!
   }
 `;
+
+const context = ({ req }) => {
+  let token = req.headers.authorization || '';
+  // console.log(token, 'token')
+  const authentication = verifyAuth(token);
+  // console.log(authentication, 'authentication')
+  return authentication;
+}
 
 const resolvers = {
   Query: {
@@ -70,7 +80,7 @@ const resolvers = {
               return User.findById(note.author)
                 .then(user => {
                   returnThis = { ...returnThis, author: { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString() } }
-                  console.log(returnThis, user)
+                  // console.log(returnThis, user)
                   return returnThis;
                 })
             })
@@ -81,7 +91,8 @@ const resolvers = {
     },
     getNotes(parents, args) {
       let returnThis;
-      return Note.find()
+      let skip = args.cursor>0?args.cursor:1;
+      return Note.find().skip((Number(skip)-1)*3).limit(3)
         .then(notes => {
           returnThis = notes.map(each => {
             if (!each.title) {
@@ -140,7 +151,7 @@ const resolvers = {
           .then(user => {
             if (user) {
               const returnThis = { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString() }
-              console.log(returnThis);
+              // console.log(returnThis);
               return returnThis;
             } else {
               return hash(details.password, 12)
@@ -152,7 +163,7 @@ const resolvers = {
                   return user.save()
                     .then(user => {
                       const returnThis = { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString() }
-                      console.log(returnThis, 'created')
+                      // console.log(returnThis, 'created')
                       return returnThis;
                     })
                 })
@@ -179,8 +190,11 @@ const resolvers = {
                   return new Error('email/password is wrong.')
                 }
                 const returnThis = { ...user._doc, id: user._id.toString(), createdAt: user.createdAt.toString(), updatedAt: user.updatedAt.toString() }
-                console.log(returnThis);
-                return returnThis;
+                const token = jwt.sign({ id: returnThis.id, email: returnThis.email }, 'wysiwyg', { expiresIn: "1h" })
+                if (token) {
+                  // console.log(returnThis, token);
+                  return returnThis;
+                }
               })
           } else {
             return new Error('email/password is wrong.')
@@ -189,6 +203,9 @@ const resolvers = {
         .catch(err => new Error('something went wrong.'))
     },
     createNote(parent, args, context, info) {
+      if (!context.id) {
+        return new ApolloError('Not authenticated!', 'app.js - line 207')
+      }
       const details = args.input;
       let returnThis;
       const note = new Note({
@@ -204,7 +221,7 @@ const resolvers = {
               user.notes.push(returnThis._id)
               return user.save()
                 .then(result => {
-                  console.log(returnThis, result)
+                  // console.log(returnThis, result)
                   return returnThis;
                 })
             })
@@ -213,6 +230,9 @@ const resolvers = {
         .catch(err => err)
     },
     updateNote(parent, args, context, info) {
+      if (!context.id) {
+        return new ApolloError('Not authenticated!', 'app.js - line 207')
+      }
       const details = args.input;
       const id = args.id
       let returnThis;
@@ -224,14 +244,17 @@ const resolvers = {
           return note.save()
             .then(note => {
               returnThis = { ...note._doc, id: note._id.toString(), createdAt: note.createdAt.toString(), updatedAt: note.updatedAt.toString() }
-                  console.log(returnThis)
-                  return returnThis;
-                })
+              // console.log(returnThis)
+              return returnThis;
             })
-            .catch(err => err)
+        })
+        .catch(err => err)
         .catch(err => err)
     },
     deleteNote(parent, args, context, info) {
+      if (!context.id) {
+        return new ApolloError('Not authenticated!', 'app.js - line 207')
+      }
       const id = args.id
       let returnThis;
 
@@ -246,7 +269,7 @@ const resolvers = {
               user.notes.pull(id)
               return user.save()
                 .then(result => {
-                  console.log(returnThis, result)
+                  // console.log(returnThis, result)
                   return returnThis;
                 })
             })
@@ -256,7 +279,7 @@ const resolvers = {
   }
 };
 
-const server = new ApolloServer({ typeDefs, resolvers });
+const server = new ApolloServer({ typeDefs, resolvers, context });
 
 const app = express();
 server.applyMiddleware({ app });
